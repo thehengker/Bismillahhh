@@ -12,8 +12,54 @@ const AdminPage = (() => {
 
   // ======================== MAIN RENDER ========================
 
+  function renderLogin(container) {
+    container.innerHTML = `
+      <div style="display:flex; justify-content:center; align-items:center; min-height:100vh; background:var(--bg-secondary);">
+        <div class="card" style="width: 100%; max-width: 400px; padding: var(--space-6);">
+          <div style="text-align:center; margin-bottom: var(--space-6);">
+            <div style="font-size: 3rem; margin-bottom: var(--space-2);">🔐</div>
+            <h2 style="margin:0; color:var(--text-primary);">Admin Login</h2>
+            <p style="color:var(--text-secondary); margin-top: var(--space-2);">Silakan masukkan kredensial Anda</p>
+          </div>
+          <form id="admin-login-form">
+            <div class="form-group">
+              <label class="form-label">Username</label>
+              <input type="text" class="form-input" id="login-username" required placeholder="Masukkan username">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <input type="password" class="form-input" id="login-password" required placeholder="Masukkan password">
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%; margin-top: var(--space-4);">Login</button>
+          </form>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('admin-login-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const user = document.getElementById('login-username').value;
+      const pass = document.getElementById('login-password').value;
+      
+      if (user === 'Monkey D. Luffy' && pass === 'Goldlabubu24') {
+        sessionStorage.setItem('admin_authenticated', 'true');
+        Components.toast('Login berhasil', 'success');
+        render(); // Re-render the admin page
+      } else {
+        Components.toast('Username atau password salah', 'error');
+      }
+    });
+  }
+
   function render() {
     const app = document.getElementById('app');
+
+    // Check authentication
+    if (!sessionStorage.getItem('admin_authenticated')) {
+      renderLogin(app);
+      return;
+    }
+
     app.innerHTML = `
       ${renderSidebar()}
       <div class="admin-content" id="admin-content">
@@ -69,6 +115,9 @@ const AdminPage = (() => {
         <div class="sidebar-footer">
           <a class="nav-item" href="#/user">
             <span class="nav-item-icon">🔙</span> Halaman User
+          </a>
+          <a class="nav-item" style="cursor:pointer;" onclick="AdminPage.logout()">
+            <span class="nav-item-icon">🚪</span> Logout
           </a>
         </div>
       </aside>`;
@@ -1013,6 +1062,11 @@ const AdminPage = (() => {
     }
   }
 
+  function logout() {
+    sessionStorage.removeItem('admin_authenticated');
+    render();
+  }
+
   // ======================== PUBLIC API ========================
 
   return {
@@ -1039,6 +1093,7 @@ const AdminPage = (() => {
     saveApiUrl,
     testApi,
     initSheets,
-    saveStoreSettings
+    saveStoreSettings,
+    logout
   };
 })();

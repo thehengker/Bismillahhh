@@ -9,29 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   Router.register('/admin', () => {
-    if (!sessionStorage.getItem('admin_auth')) {
-      const username = prompt('Masukkan Username Admin:');
-      if (username === null) {
-        Router.navigate('/user');
-        return;
-      }
-      
-      const password = prompt('Masukkan Password Admin:');
-      if (password === null) {
-        Router.navigate('/user');
-        return;
-      }
-
-      if (username === 'Monkey D. Luffy' && password === 'Goldlabubu24') {
-        sessionStorage.setItem('admin_auth', 'true');
-        AdminPage.render();
-      } else {
-        alert('Username atau Password salah!');
-        Router.navigate('/user');
-      }
-    } else {
-      AdminPage.render();
-    }
+    AdminPage.render();
   });
 
   // Initialize router
