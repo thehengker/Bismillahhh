@@ -1,5 +1,5 @@
 // ============================================================
-// 🧺 LAUNDRY FLOP — Admin Page
+// 🧺 LAUNDRY FLOP TROPIC — Admin Page
 // ============================================================
 
 const AdminPage = (() => {
@@ -87,7 +87,7 @@ const AdminPage = (() => {
         <div class="sidebar-header">
           <div class="sidebar-logo">🧺</div>
           <div class="sidebar-brand">
-            Laundry Flop
+            Laundry Flop Tropic
             <span>Admin Panel</span>
           </div>
         </div>

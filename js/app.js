@@ -1,5 +1,5 @@
 // ============================================================
-// 🧺 LAUNDRY FLOP — App Initialization
+// 🧺 LAUNDRY FLOP TROPIC — App Initialization
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', () => {

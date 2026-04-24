@@ -1,5 +1,5 @@
 // ============================================================
-// 🧺 LAUNDRY FLOP — Reusable UI Components
+// 🧺 LAUNDRY FLOP TROPIC — Reusable UI Components
 // ============================================================
 
 const Components = (() => {
