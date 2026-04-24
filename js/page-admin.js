@@ -920,110 +920,6 @@ const AdminPage = (() => {
     });
   }
 
-  // ======================== PENDAPATAN (REVENUE) ========================
-
-  async function renderRevenue(container) {
-    container.innerHTML = `
-      <div class="admin-page-header">
-        <div>
-          <h1 class="admin-page-title">Laporan Pendapatan</h1>
-          <p class="admin-page-subtitle">Ringkasan pendapatan dari transaksi selesai/diambil</p>
-        </div>
-      </div>
-      <div class="stats-grid stagger-children" id="revenue-stats-grid">
-        \${Components.skeletonStats(3)}
-      </div>
-      <div class="admin-section">
-        <div class="section-header">
-          <h2 class="section-title">Riwayat Pendapatan Terbaru</h2>
-        </div>
-        <div class="card" id="revenue-table">
-          \${Components.skeletonTable(5)}
-        </div>
-      </div>\`;
-
-    await loadRevenueData();
-  }
-
-  async function loadRevenueData() {
-    if (!API.isConfigured()) return;
-
-    try {
-      const result = await API.Transaksi.getAll();
-      if (result.success) {
-        const data = result.data;
-        // Filter pendapatan (hanya transaksi Selesai / Diambil)
-        const revenueData = data.filter(t => t.status === 'Selesai' || t.status === 'Diambil');
-        
-        // Urutkan dari terbaru
-        revenueData.sort((a, b) => new Date(b.tanggal_masuk) - new Date(a.tanggal_masuk));
-
-        // Kalkulasi Total, Bulan Ini, Hari Ini
-        const now = new Date();
-        let totalAll = 0;
-        let totalMonth = 0;
-        let totalToday = 0;
-
-        revenueData.forEach(t => {
-          const tDate = new Date(t.tanggal_masuk);
-          const tValue = parseInt(t.total_harga) || 0;
-          
-          totalAll += tValue;
-          
-          if (tDate.getMonth() === now.getMonth() && tDate.getFullYear() === now.getFullYear()) {
-            totalMonth += tValue;
-          }
-          
-          if (tDate.toDateString() === now.toDateString()) {
-            totalToday += tValue;
-          }
-        });
-
-        document.getElementById('revenue-stats-grid').innerHTML = \`
-          \${Components.statsCard('📅', Components.formatCurrency(totalToday), 'Pendapatan Hari Ini', 'stat-today')}
-          \${Components.statsCard('🗓️', Components.formatCurrency(totalMonth), 'Pendapatan Bulan Ini', 'stat-month')}
-          \${Components.statsCard('💰', Components.formatCurrency(totalAll), 'Total Pendapatan', 'stat-total')}
-        \`;
-
-        if (revenueData.length > 0) {
-          document.getElementById('revenue-table').innerHTML = renderRevenueTable(revenueData);
-        } else {
-          document.getElementById('revenue-table').innerHTML = Components.emptyState('💰', 'Belum Ada Pendapatan', 'Belum ada transaksi yang selesai atau diambil');
-        }
-      }
-    } catch (error) {
-      Components.toast('Gagal memuat data pendapatan', 'error');
-    }
-  }
-
-  function renderRevenueTable(data) {
-    let html = \`
-      <div class="table-container">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>ID Transaksi</th>
-              <th>Pelanggan</th>
-              <th>Tanggal Selesai</th>
-              <th>Pendapatan</th>
-            </tr>
-          </thead>
-          <tbody>\`;
-
-    data.slice(0, 50).forEach(t => { // Tampilkan max 50 terbaru
-      html += \`
-        <tr>
-          <td><span class="table-id">\${t.id_transaksi}</span></td>
-          <td style="color:var(--text-primary);font-weight:500">\${t.nama_pelanggan}</td>
-          <td style="font-size:var(--text-xs)">\${Components.formatDate(t.tanggal_masuk)}</td>
-          <td style="font-weight:600;color:var(--accent-primary)">\${Components.formatCurrency(t.total_harga)}</td>
-        </tr>\`;
-    });
-
-    html += '</tbody></table></div>';
-    return html;
-  }
-
   // ======================== PENGATURAN (SETTINGS) ========================
 
   async function renderSettings(container) {
@@ -1180,6 +1076,251 @@ const AdminPage = (() => {
     }
   }
 
+  // ======================== PENDAPATAN (REVENUE) ========================
+
+  let revenueMonth = ''; // YYYY-MM filter, '' = all time
+
+  async function renderRevenue(container) {
+    container.innerHTML = `
+      <div class="admin-page-header">
+        <div>
+          <h1 class="admin-page-title">Pendapatan</h1>
+          <p class="admin-page-subtitle">Laporan pendapatan laundry</p>
+        </div>
+      </div>
+      <div class="stats-grid stagger-children" id="revenue-stats">
+        ${Components.skeletonStats(4)}
+      </div>
+      <div class="admin-section" style="margin-top: var(--space-6)">
+        <div class="section-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--space-3)">
+          <h2 class="section-title">Pendapatan Bulanan</h2>
+          <div style="display:flex;gap:var(--space-2);align-items:center">
+            <input type="month" class="form-input" id="revenue-month-filter" style="max-width:200px;padding:6px 10px;font-size:var(--text-sm)" onchange="AdminPage.filterRevenue(this.value)">
+            <button class="btn btn-secondary" style="padding:6px 12px;font-size:var(--text-sm)" onclick="document.getElementById('revenue-month-filter').value='';AdminPage.filterRevenue('')">Reset</button>
+          </div>
+        </div>
+        <div class="card" id="revenue-monthly-table">
+          ${Components.skeletonTable(6)}
+        </div>
+      </div>
+      <div class="admin-section" style="margin-top: var(--space-6)">
+        <div class="section-header">
+          <h2 class="section-title">Pendapatan per Layanan</h2>
+        </div>
+        <div class="card" id="revenue-service-table">
+          ${Components.skeletonTable(4)}
+        </div>
+      </div>`;
+
+    await loadRevenue();
+  }
+
+  async function loadRevenue() {
+    if (!API.isConfigured()) {
+      document.getElementById('revenue-stats').innerHTML = `
+        <div class="card" style="grid-column: 1/-1; text-align:center; padding: var(--space-8)">
+          <p style="color:var(--accent-warning); font-size:var(--text-lg); margin-bottom:var(--space-4)">⚠️ API belum dikonfigurasi</p>
+          <p style="color:var(--text-tertiary); margin-bottom:var(--space-6)">Masukkan URL Google Apps Script Web App di menu Pengaturan</p>
+          <button class="btn btn-primary" onclick="AdminPage.switchTab('settings')">Buka Pengaturan</button>
+        </div>`;
+      document.getElementById('revenue-monthly-table').innerHTML = '';
+      document.getElementById('revenue-service-table').innerHTML = '';
+      return;
+    }
+
+    try {
+      if (cachedData.transaksi.length === 0) {
+        const result = await API.Transaksi.getAll();
+        if (result.success) cachedData.transaksi = result.data;
+      }
+      displayRevenue();
+    } catch (error) {
+      Components.toast('Gagal memuat data pendapatan', 'error');
+    }
+  }
+
+  function filterRevenue(monthVal) {
+    revenueMonth = monthVal;
+    displayRevenue();
+  }
+
+  function displayRevenue() {
+    let data = [...cachedData.transaksi];
+
+    // ---- Compute stats ----
+    const now = new Date();
+    const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    const todayStr = now.toISOString().slice(0, 10);
+
+    const allCompleted = data.filter(t => t.status === 'Selesai' || t.status === 'Diambil');
+    const totalRevenue = allCompleted.reduce((s, t) => s + Number(t.total_harga || 0), 0);
+
+    const monthCompleted = allCompleted.filter(t => {
+      if (!t.tanggal_masuk) return false;
+      return t.tanggal_masuk.slice(0, 7) === currentMonth;
+    });
+    const monthRevenue = monthCompleted.reduce((s, t) => s + Number(t.total_harga || 0), 0);
+
+    const todayCompleted = allCompleted.filter(t => {
+      if (!t.tanggal_masuk) return false;
+      return t.tanggal_masuk.slice(0, 10) === todayStr;
+    });
+    const todayRevenue = todayCompleted.reduce((s, t) => s + Number(t.total_harga || 0), 0);
+
+    const statsEl = document.getElementById('revenue-stats');
+    if (statsEl) {
+      statsEl.innerHTML = `
+        ${Components.statsCard('💰', Components.formatCurrency(totalRevenue), 'Total Pendapatan', 'stat-revenue')}
+        ${Components.statsCard('📅', Components.formatCurrency(monthRevenue), 'Bulan Ini', 'stat-process')}
+        ${Components.statsCard('📆', Components.formatCurrency(todayRevenue), 'Hari Ini', 'stat-done')}
+        ${Components.statsCard('✅', allCompleted.length, 'Order Selesai', 'stat-orders')}
+      `;
+    }
+
+    // ---- Monthly breakdown ----
+    const monthlyMap = {};
+    allCompleted.forEach(t => {
+      const m = (t.tanggal_masuk || '').slice(0, 7);
+      if (!m) return;
+      if (!monthlyMap[m]) monthlyMap[m] = { revenue: 0, count: 0, totalKg: 0 };
+      monthlyMap[m].revenue += Number(t.total_harga || 0);
+      monthlyMap[m].count += 1;
+      monthlyMap[m].totalKg += Number(t.berat_kg || 0);
+    });
+
+    let monthKeys = Object.keys(monthlyMap).sort((a, b) => b.localeCompare(a));
+
+    // Apply month filter
+    if (revenueMonth) {
+      monthKeys = monthKeys.filter(m => m === revenueMonth);
+    }
+
+    const monthTableEl = document.getElementById('revenue-monthly-table');
+    if (monthTableEl) {
+      if (monthKeys.length === 0) {
+        monthTableEl.innerHTML = Components.emptyState('📊', 'Belum Ada Data', 'Tidak ada data pendapatan untuk ditampilkan');
+      } else {
+        let html = `
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Bulan</th>
+                  <th>Jumlah Order</th>
+                  <th>Total Berat</th>
+                  <th>Total Pendapatan</th>
+                  <th>Rata-rata/Order</th>
+                </tr>
+              </thead>
+              <tbody>`;
+
+        let grandTotal = 0;
+        let grandCount = 0;
+        let grandKg = 0;
+
+        monthKeys.forEach(m => {
+          const d = monthlyMap[m];
+          const avg = d.count > 0 ? Math.round(d.revenue / d.count) : 0;
+          grandTotal += d.revenue;
+          grandCount += d.count;
+          grandKg += d.totalKg;
+
+          // Format month label
+          const [y, mo] = m.split('-');
+          const monthNames = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+          const label = monthNames[parseInt(mo) - 1] + ' ' + y;
+
+          html += `
+            <tr>
+              <td style="font-weight:500;color:var(--text-primary)">${label}</td>
+              <td>${d.count} order</td>
+              <td>${d.totalKg.toFixed(1)} kg</td>
+              <td style="font-weight:600;color:var(--accent-primary)">${Components.formatCurrency(d.revenue)}</td>
+              <td style="color:var(--text-secondary)">${Components.formatCurrency(avg)}</td>
+            </tr>`;
+        });
+
+        // Totals row
+        if (monthKeys.length > 1) {
+          const grandAvg = grandCount > 0 ? Math.round(grandTotal / grandCount) : 0;
+          html += `
+            <tr style="border-top: 2px solid var(--border-primary); font-weight: 700;">
+              <td style="color:var(--text-primary)">Total</td>
+              <td>${grandCount} order</td>
+              <td>${grandKg.toFixed(1)} kg</td>
+              <td style="color:var(--accent-primary)">${Components.formatCurrency(grandTotal)}</td>
+              <td style="color:var(--text-secondary)">${Components.formatCurrency(grandAvg)}</td>
+            </tr>`;
+        }
+
+        html += '</tbody></table></div>';
+        monthTableEl.innerHTML = html;
+      }
+    }
+
+    // ---- Per-service breakdown ----
+    const serviceMap = {};
+    const sourceData = revenueMonth
+      ? allCompleted.filter(t => (t.tanggal_masuk || '').slice(0, 7) === revenueMonth)
+      : allCompleted;
+
+    sourceData.forEach(t => {
+      const name = t.nama_layanan || 'Lainnya';
+      if (!serviceMap[name]) serviceMap[name] = { revenue: 0, count: 0, totalKg: 0 };
+      serviceMap[name].revenue += Number(t.total_harga || 0);
+      serviceMap[name].count += 1;
+      serviceMap[name].totalKg += Number(t.berat_kg || 0);
+    });
+
+    const serviceKeys = Object.keys(serviceMap).sort((a, b) => serviceMap[b].revenue - serviceMap[a].revenue);
+    const serviceTotalRevenue = serviceKeys.reduce((s, k) => s + serviceMap[k].revenue, 0);
+
+    const serviceTableEl = document.getElementById('revenue-service-table');
+    if (serviceTableEl) {
+      if (serviceKeys.length === 0) {
+        serviceTableEl.innerHTML = Components.emptyState('👕', 'Belum Ada Data', 'Tidak ada data layanan');
+      } else {
+        let html = `
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Layanan</th>
+                  <th>Jumlah Order</th>
+                  <th>Total Berat</th>
+                  <th>Pendapatan</th>
+                  <th>Kontribusi</th>
+                </tr>
+              </thead>
+              <tbody>`;
+
+        serviceKeys.forEach(name => {
+          const d = serviceMap[name];
+          const pct = serviceTotalRevenue > 0 ? ((d.revenue / serviceTotalRevenue) * 100).toFixed(1) : 0;
+
+          html += `
+            <tr>
+              <td style="font-weight:500;color:var(--text-primary)">${name}</td>
+              <td>${d.count} order</td>
+              <td>${d.totalKg.toFixed(1)} kg</td>
+              <td style="font-weight:600;color:var(--accent-primary)">${Components.formatCurrency(d.revenue)}</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:var(--space-2)">
+                  <div style="flex:1;height:8px;background:var(--bg-tertiary);border-radius:4px;overflow:hidden;min-width:60px">
+                    <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,var(--accent-primary),var(--accent-secondary));border-radius:4px;transition:width .5s ease"></div>
+                  </div>
+                  <span style="font-size:var(--text-xs);color:var(--text-secondary);min-width:40px;text-align:right">${pct}%</span>
+                </div>
+              </td>
+            </tr>`;
+        });
+
+        html += '</tbody></table></div>';
+        serviceTableEl.innerHTML = html;
+      }
+    }
+  }
+
   // ======================== PUBLIC API ========================
 
   return {
@@ -1205,6 +1346,7 @@ const AdminPage = (() => {
     filterOrders,
     filterByStatus,
     filterCustomers,
+    filterRevenue,
     saveApiUrl,
     testApi,
     initSheets,
