@@ -74,6 +74,7 @@ const AdminPage = (() => {
     else if (path.includes('/admin/customers')) switchTab('customers');
     else if (path.includes('/admin/services')) switchTab('services');
     else if (path.includes('/admin/revenue')) switchTab('revenue');
+    else if (path.includes('/admin/expenses')) switchTab('expenses');
     else if (path.includes('/admin/settings')) switchTab('settings');
     else switchTab('dashboard');
   }
@@ -107,6 +108,9 @@ const AdminPage = (() => {
             </a>
             <a class="nav-item ${currentTab === 'revenue' ? 'active' : ''}" onclick="AdminPage.switchTab('revenue')" data-tab="revenue">
               <span class="nav-item-icon">💰</span> Pendapatan
+            </a>
+            <a class="nav-item ${currentTab === 'expenses' ? 'active' : ''}" onclick="AdminPage.switchTab('expenses')" data-tab="expenses">
+              <span class="nav-item-icon">💸</span> Biaya
             </a>
           </div>
           <div class="nav-section">
@@ -159,6 +163,7 @@ const AdminPage = (() => {
       case 'customers': renderCustomers(content); break;
       case 'services': renderServices(content); break;
       case 'revenue': renderRevenue(content); break;
+      case 'expenses': renderExpenses(content); break;
       case 'settings': renderSettings(content); break;
     }
   }
@@ -1043,6 +1048,189 @@ const AdminPage = (() => {
     }
   }
 
+  // ======================== BIAYA (EXPENSES) ========================
+
+  async function renderExpenses(container) {
+    container.innerHTML = `
+      <div class="admin-page-header">
+        <div>
+          <h1 class="admin-page-title">Manajemen Biaya</h1>
+          <p class="admin-page-subtitle">Pencatatan pengeluaran operasional laundry</p>
+        </div>
+        <button class="btn btn-primary" onclick="AdminPage.showAddExpense()">+ Catat Biaya</button>
+      </div>
+      <div class="stats-grid stagger-children" id="expense-stats" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+        ${Components.skeletonStats(3)}
+      </div>
+      <div class="card" style="margin-top: var(--space-6);">
+        <div class="card-header">
+          <h3 class="card-title">Riwayat Pengeluaran</h3>
+        </div>
+        <div id="expense-table">
+          ${Components.skeletonTable(5)}
+        </div>
+      </div>`;
+
+    await loadExpenses();
+  }
+
+  async function loadExpenses() {
+    try {
+      const expensesJson = localStorage.getItem('laundry_expenses') || '[]';
+      const expensesData = JSON.parse(expensesJson);
+      displayExpenses(expensesData);
+    } catch (error) {
+      Components.toast('Gagal memuat data biaya', 'error');
+    }
+  }
+
+  function displayExpenses(data) {
+    let totalExpense = 0;
+    let thisMonthExpense = 0;
+    let todayExpense = 0;
+    
+    const now = new Date();
+    const thisMonth = now.getMonth();
+    const thisYear = now.getFullYear();
+    const today = now.toDateString();
+
+    data.forEach(e => {
+      const amount = parseFloat(e.jumlah) || 0;
+      totalExpense += amount;
+      
+      const eDate = new Date(e.tanggal);
+      if (eDate.getMonth() === thisMonth && eDate.getFullYear() === thisYear) {
+        thisMonthExpense += amount;
+      }
+      if (eDate.toDateString() === today) {
+        todayExpense += amount;
+      }
+    });
+
+    data.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+
+    const statsEl = document.getElementById('expense-stats');
+    if (statsEl) {
+      statsEl.innerHTML = `
+        ${Components.statsCard('💸', Components.formatCurrency(totalExpense), 'Total Keseluruhan', 'stat-total-exp')}
+        ${Components.statsCard('📅', Components.formatCurrency(thisMonthExpense), 'Bulan Ini', 'stat-month-exp')}
+        ${Components.statsCard('📈', Components.formatCurrency(todayExpense), 'Hari Ini', 'stat-today-exp')}
+      `;
+    }
+
+    const tableEl = document.getElementById('expense-table');
+    if (tableEl) {
+      if (data.length === 0) {
+        tableEl.innerHTML = Components.emptyState('📉', 'Belum Ada Pengeluaran', 'Klik tombol Catat Biaya untuk menambahkan pengeluaran');
+      } else {
+        let html = `
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Tanggal</th>
+                  <th>Keterangan</th>
+                  <th>Kategori</th>
+                  <th>Jumlah</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody>`;
+        
+        data.forEach(e => {
+          html += `
+            <tr>
+              <td style="font-size:var(--text-xs)">${Components.formatDate(e.tanggal)}</td>
+              <td style="font-weight:500;">${e.keterangan}</td>
+              <td><span class="status-badge" style="background:var(--bg-secondary);color:var(--text-secondary)">${e.kategori}</span></td>
+              <td style="font-weight:600;color:var(--accent-warning)">${Components.formatCurrency(e.jumlah)}</td>
+              <td>
+                <div class="table-actions">
+                  <button class="btn btn-ghost btn-icon" title="Hapus" onclick="AdminPage.confirmDeleteExpense('${e.id}')">🗑️</button>
+                </div>
+              </td>
+            </tr>`;
+        });
+        
+        html += `</tbody></table></div>`;
+        tableEl.innerHTML = html;
+      }
+    }
+  }
+
+  function showAddExpense() {
+    const body = `
+      <form id="form-add-expense">
+        <div class="form-group">
+          <label class="form-label">Keterangan</label>
+          <input type="text" class="form-input" id="exp-ket" required placeholder="Contoh: Beli deterjen">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Kategori</label>
+          <select class="form-select" id="exp-kategori" required>
+            <option value="Bahan Baku">Bahan Baku (Deterjen, Pewangi, dll)</option>
+            <option value="Operasional">Operasional (Listrik, Air, Internet)</option>
+            <option value="Gaji">Gaji Karyawan</option>
+            <option value="Lainnya">Lainnya</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Jumlah (Rp)</label>
+          <input type="number" class="form-input" id="exp-jumlah" required min="1" placeholder="Contoh: 50000">
+        </div>
+      </form>`;
+
+    const footer = `
+      <button class="btn btn-secondary" onclick="Components.closeModal()">Batal</button>
+      <button class="btn btn-primary" onclick="AdminPage.submitExpense()">Simpan</button>`;
+
+    Components.showModal('Catat Biaya Pengeluaran', body, footer);
+  }
+
+  function submitExpense() {
+    const ket = document.getElementById('exp-ket').value.trim();
+    const kategori = document.getElementById('exp-kategori').value;
+    const jumlah = document.getElementById('exp-jumlah').value;
+
+    if (!ket || !jumlah) {
+      Components.toast('Keterangan dan Jumlah wajib diisi', 'warning');
+      return;
+    }
+
+    const expensesJson = localStorage.getItem('laundry_expenses') || '[]';
+    let expenses = [];
+    try { expenses = JSON.parse(expensesJson); } catch(e) {}
+
+    const newExpense = {
+      id: 'EXP-' + Date.now(),
+      tanggal: new Date().toISOString(),
+      keterangan: ket,
+      kategori: kategori,
+      jumlah: parseFloat(jumlah)
+    };
+
+    expenses.push(newExpense);
+    localStorage.setItem('laundry_expenses', JSON.stringify(expenses));
+
+    Components.toast('Biaya berhasil dicatat', 'success');
+    Components.closeModal();
+    loadExpenses();
+  }
+
+  function confirmDeleteExpense(id) {
+    Components.confirm('Yakin ingin menghapus catatan biaya ini?', () => {
+      const expensesJson = localStorage.getItem('laundry_expenses') || '[]';
+      let expenses = [];
+      try { expenses = JSON.parse(expensesJson); } catch(e) {}
+
+      expenses = expenses.filter(e => e.id !== id);
+      localStorage.setItem('laundry_expenses', JSON.stringify(expenses));
+      
+      Components.toast('Biaya berhasil dihapus', 'success');
+      loadExpenses();
+    });
+  }
+
   // ======================== PENGATURAN (SETTINGS) ========================
 
   async function renderSettings(container) {
@@ -1231,6 +1419,9 @@ const AdminPage = (() => {
     testApi,
     initSheets,
     saveStoreSettings,
-    logout
+    logout,
+    showAddExpense,
+    submitExpense,
+    confirmDeleteExpense
   };
 })();
