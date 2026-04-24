@@ -83,6 +83,7 @@ const AdminPage = (() => {
     else if (path.includes('/admin/customers')) switchTab('customers');
     else if (path.includes('/admin/services')) switchTab('services');
     else if (path.includes('/admin/revenue')) switchTab('revenue');
+    else if (path.includes('/admin/expenses')) switchTab('expenses');
     else if (path.includes('/admin/settings')) switchTab('settings');
     else switchTab('dashboard');
   }
@@ -116,6 +117,9 @@ const AdminPage = (() => {
             </a>
             <a class="nav-item ${currentTab === 'revenue' ? 'active' : ''}" onclick="AdminPage.switchTab('revenue')" data-tab="revenue">
               <span class="nav-item-icon">💰</span> Pendapatan
+            </a>
+            <a class="nav-item ${currentTab === 'expenses' ? 'active' : ''}" onclick="AdminPage.switchTab('expenses')" data-tab="expenses">
+              <span class="nav-item-icon">💸</span> Biaya
             </a>
           </div>
           <div class="nav-section">
@@ -168,6 +172,7 @@ const AdminPage = (() => {
       case 'customers': renderCustomers(content); break;
       case 'services': renderServices(content); break;
       case 'revenue': renderRevenue(content); break;
+      case 'expenses': renderExpenses(content); break;
       case 'settings': renderSettings(content); break;
     }
   }
@@ -1321,6 +1326,371 @@ const AdminPage = (() => {
     }
   }
 
+  // ======================== BIAYA (EXPENSES) ========================
+
+  const EXPENSES_KEY = 'laundry_flop_expenses';
+  let expenseMonth = '';
+  let expenseCategoryFilter = 'all';
+
+  const EXPENSE_CATEGORIES = [
+    { value: 'Deterjen & Bahan', icon: '🧴' },
+    { value: 'Listrik', icon: '⚡' },
+    { value: 'Air', icon: '💧' },
+    { value: 'Gaji Karyawan', icon: '👷' },
+    { value: 'Sewa Tempat', icon: '🏠' },
+    { value: 'Perawatan Mesin', icon: '🔧' },
+    { value: 'Transportasi', icon: '🚗' },
+    { value: 'Perlengkapan', icon: '📦' },
+    { value: 'Lainnya', icon: '📝' }
+  ];
+
+  function getExpenses() {
+    try {
+      return JSON.parse(localStorage.getItem(EXPENSES_KEY) || '[]');
+    } catch { return []; }
+  }
+
+  function saveExpenses(expenses) {
+    localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+  }
+
+  function renderExpenses(container) {
+    const categoryOptions = EXPENSE_CATEGORIES.map(c =>
+      `<button class="filter-btn ${expenseCategoryFilter === c.value ? 'active' : ''}" onclick="AdminPage.filterExpenseCategory('${c.value}', this)">${c.icon} ${c.value}</button>`
+    ).join('');
+
+    container.innerHTML = `
+      <div class="admin-page-header">
+        <div>
+          <h1 class="admin-page-title">Biaya Operasional</h1>
+          <p class="admin-page-subtitle">Kelola pengeluaran laundry</p>
+        </div>
+        <button class="btn btn-primary" onclick="AdminPage.showAddExpense()">
+          + Tambah Biaya
+        </button>
+      </div>
+      <div class="stats-grid stagger-children" id="expense-stats"></div>
+      <div class="admin-section" style="margin-top: var(--space-6)">
+        <div class="section-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--space-3)">
+          <h2 class="section-title">Daftar Biaya</h2>
+          <div style="display:flex;gap:var(--space-2);align-items:center">
+            <input type="month" class="form-input" id="expense-month-filter" value="${expenseMonth}" style="max-width:200px;padding:6px 10px;font-size:var(--text-sm)" onchange="AdminPage.filterExpenseMonth(this.value)">
+            <button class="btn btn-secondary" style="padding:6px 12px;font-size:var(--text-sm)" onclick="document.getElementById('expense-month-filter').value='';AdminPage.filterExpenseMonth('')">Reset</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="table-toolbar" style="overflow-x:auto">
+            <div class="filter-group" id="expense-category-filters" style="flex-wrap:wrap">
+              <button class="filter-btn ${expenseCategoryFilter === 'all' ? 'active' : ''}" onclick="AdminPage.filterExpenseCategory('all', this)">Semua</button>
+              ${categoryOptions}
+            </div>
+          </div>
+          <div id="expenses-table"></div>
+        </div>
+      </div>
+      <div class="admin-section" style="margin-top: var(--space-6)">
+        <div class="section-header">
+          <h2 class="section-title">Ringkasan per Kategori</h2>
+        </div>
+        <div class="card" id="expense-category-summary"></div>
+      </div>`;
+
+    displayExpenses();
+  }
+
+  function filterExpenseMonth(val) {
+    expenseMonth = val;
+    displayExpenses();
+  }
+
+  function filterExpenseCategory(category, btnEl) {
+    expenseCategoryFilter = category;
+    document.querySelectorAll('#expense-category-filters .filter-btn').forEach(b => b.classList.remove('active'));
+    if (btnEl) btnEl.classList.add('active');
+    displayExpenses();
+  }
+
+  function displayExpenses() {
+    let expenses = getExpenses();
+
+    // ---- Stats ----
+    const now = new Date();
+    const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    const todayStr = now.toISOString().slice(0, 10);
+
+    const totalAll = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+    const totalMonth = expenses.filter(e => (e.date || '').slice(0, 7) === currentMonth).reduce((s, e) => s + Number(e.amount || 0), 0);
+    const totalToday = expenses.filter(e => (e.date || '').slice(0, 10) === todayStr).reduce((s, e) => s + Number(e.amount || 0), 0);
+    const totalEntries = expenses.length;
+
+    const statsEl = document.getElementById('expense-stats');
+    if (statsEl) {
+      statsEl.innerHTML = `
+        ${Components.statsCard('💸', Components.formatCurrency(totalAll), 'Total Biaya', 'stat-revenue')}
+        ${Components.statsCard('📅', Components.formatCurrency(totalMonth), 'Bulan Ini', 'stat-process')}
+        ${Components.statsCard('📆', Components.formatCurrency(totalToday), 'Hari Ini', 'stat-done')}
+        ${Components.statsCard('📝', totalEntries, 'Total Catatan', 'stat-orders')}
+      `;
+    }
+
+    // ---- Filter data for table ----
+    let filtered = [...expenses];
+    if (expenseMonth) {
+      filtered = filtered.filter(e => (e.date || '').slice(0, 7) === expenseMonth);
+    }
+    if (expenseCategoryFilter !== 'all') {
+      filtered = filtered.filter(e => e.category === expenseCategoryFilter);
+    }
+    filtered.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+    const tableEl = document.getElementById('expenses-table');
+    if (tableEl) {
+      if (filtered.length === 0) {
+        tableEl.innerHTML = Components.emptyState('💸', 'Belum Ada Biaya', 'Tambahkan catatan biaya untuk memulai');
+      } else {
+        const catIcon = {};
+        EXPENSE_CATEGORIES.forEach(c => catIcon[c.value] = c.icon);
+
+        let html = `
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Tanggal</th>
+                  <th>Kategori</th>
+                  <th>Keterangan</th>
+                  <th>Jumlah</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody>`;
+
+        filtered.forEach(e => {
+          const icon = catIcon[e.category] || '📝';
+          html += `
+            <tr>
+              <td style="font-size:var(--text-xs)">${Components.formatDate(e.date)}</td>
+              <td><span style="display:inline-flex;align-items:center;gap:4px">${icon} ${e.category}</span></td>
+              <td style="color:var(--text-primary);font-weight:500">${e.description || '-'}</td>
+              <td style="font-weight:600;color:var(--accent-warning)">${Components.formatCurrency(e.amount)}</td>
+              <td>
+                <div class="table-actions">
+                  <button class="btn btn-ghost btn-icon" title="Edit" onclick="AdminPage.showEditExpense('${e.id}')">✏️</button>
+                  <button class="btn btn-ghost btn-icon" title="Hapus" onclick="AdminPage.confirmDeleteExpense('${e.id}')">🗑️</button>
+                </div>
+              </td>
+            </tr>`;
+        });
+
+        // Total row
+        const filteredTotal = filtered.reduce((s, e) => s + Number(e.amount || 0), 0);
+        html += `
+          <tr style="border-top: 2px solid var(--border-primary); font-weight: 700;">
+            <td colspan="3" style="color:var(--text-primary)">Total</td>
+            <td style="color:var(--accent-warning)">${Components.formatCurrency(filteredTotal)}</td>
+            <td></td>
+          </tr>`;
+
+        html += '</tbody></table></div>';
+        tableEl.innerHTML = html;
+      }
+    }
+
+    // ---- Category summary ----
+    const summarySource = expenseMonth
+      ? expenses.filter(e => (e.date || '').slice(0, 7) === expenseMonth)
+      : expenses;
+
+    const catMap = {};
+    summarySource.forEach(e => {
+      const cat = e.category || 'Lainnya';
+      if (!catMap[cat]) catMap[cat] = { total: 0, count: 0 };
+      catMap[cat].total += Number(e.amount || 0);
+      catMap[cat].count += 1;
+    });
+
+    const catKeys = Object.keys(catMap).sort((a, b) => catMap[b].total - catMap[a].total);
+    const catTotalAll = catKeys.reduce((s, k) => s + catMap[k].total, 0);
+    const catIcon = {};
+    EXPENSE_CATEGORIES.forEach(c => catIcon[c.value] = c.icon);
+
+    const summaryEl = document.getElementById('expense-category-summary');
+    if (summaryEl) {
+      if (catKeys.length === 0) {
+        summaryEl.innerHTML = Components.emptyState('📊', 'Belum Ada Data', 'Tambahkan biaya untuk melihat ringkasan');
+      } else {
+        let html = `
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Kategori</th>
+                  <th>Jumlah Catatan</th>
+                  <th>Total Biaya</th>
+                  <th>Proporsi</th>
+                </tr>
+              </thead>
+              <tbody>`;
+
+        catKeys.forEach(cat => {
+          const d = catMap[cat];
+          const pct = catTotalAll > 0 ? ((d.total / catTotalAll) * 100).toFixed(1) : 0;
+          const icon = catIcon[cat] || '📝';
+
+          html += `
+            <tr>
+              <td style="font-weight:500;color:var(--text-primary)"><span style="display:inline-flex;align-items:center;gap:4px">${icon} ${cat}</span></td>
+              <td>${d.count} catatan</td>
+              <td style="font-weight:600;color:var(--accent-warning)">${Components.formatCurrency(d.total)}</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:var(--space-2)">
+                  <div style="flex:1;height:8px;background:var(--bg-tertiary);border-radius:4px;overflow:hidden;min-width:60px">
+                    <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,#ff6b6b,#ffa502);border-radius:4px;transition:width .5s ease"></div>
+                  </div>
+                  <span style="font-size:var(--text-xs);color:var(--text-secondary);min-width:40px;text-align:right">${pct}%</span>
+                </div>
+              </td>
+            </tr>`;
+        });
+
+        html += '</tbody></table></div>';
+        summaryEl.innerHTML = html;
+      }
+    }
+  }
+
+  function showAddExpense() {
+    const today = new Date().toISOString().slice(0, 10);
+    const catOptions = EXPENSE_CATEGORIES.map(c =>
+      `<option value="${c.value}">${c.icon} ${c.value}</option>`
+    ).join('');
+
+    const body = `
+      <form id="form-expense">
+        <div class="form-group">
+          <label class="form-label">Tanggal</label>
+          <input type="date" class="form-input" id="exp-date" value="${today}" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Kategori</label>
+          <select class="form-select" id="exp-category" required>
+            ${catOptions}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Keterangan</label>
+          <input type="text" class="form-input" id="exp-desc" required placeholder="Contoh: Beli deterjen 5 kg">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Jumlah (Rp)</label>
+          <input type="number" class="form-input" id="exp-amount" required placeholder="50000" min="0">
+        </div>
+      </form>`;
+
+    const footer = `
+      <button class="btn btn-secondary" onclick="Components.closeModal()">Batal</button>
+      <button class="btn btn-primary" id="btn-submit-exp" onclick="AdminPage.submitExpense()">Simpan</button>`;
+
+    Components.showModal('Tambah Biaya Baru', body, footer);
+  }
+
+  function submitExpense() {
+    const date = document.getElementById('exp-date').value;
+    const category = document.getElementById('exp-category').value;
+    const description = document.getElementById('exp-desc').value.trim();
+    const amount = document.getElementById('exp-amount').value;
+
+    if (!date || !category || !description || !amount) {
+      Components.toast('Semua field wajib diisi', 'warning');
+      return;
+    }
+
+    const expenses = getExpenses();
+    expenses.push({
+      id: 'EXP-' + Date.now(),
+      date,
+      category,
+      description,
+      amount: parseInt(amount),
+      created_at: new Date().toISOString()
+    });
+    saveExpenses(expenses);
+
+    Components.toast('Biaya berhasil ditambahkan!', 'success');
+    Components.closeModal();
+    displayExpenses();
+  }
+
+  function showEditExpense(id) {
+    const expenses = getExpenses();
+    const e = expenses.find(x => x.id === id);
+    if (!e) return;
+
+    const catOptions = EXPENSE_CATEGORIES.map(c =>
+      `<option value="${c.value}" ${c.value === e.category ? 'selected' : ''}>${c.icon} ${c.value}</option>`
+    ).join('');
+
+    const body = `
+      <form>
+        <div class="form-group">
+          <label class="form-label">Tanggal</label>
+          <input type="date" class="form-input" id="edit-exp-date" value="${e.date}" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Kategori</label>
+          <select class="form-select" id="edit-exp-category" required>
+            ${catOptions}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Keterangan</label>
+          <input type="text" class="form-input" id="edit-exp-desc" value="${e.description}" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Jumlah (Rp)</label>
+          <input type="number" class="form-input" id="edit-exp-amount" value="${e.amount}" required min="0">
+        </div>
+      </form>`;
+
+    const footer = `
+      <button class="btn btn-secondary" onclick="Components.closeModal()">Batal</button>
+      <button class="btn btn-primary" onclick="AdminPage.updateExpense('${id}')">Update</button>`;
+
+    Components.showModal('Edit Biaya', body, footer);
+  }
+
+  function updateExpense(id) {
+    const date = document.getElementById('edit-exp-date').value;
+    const category = document.getElementById('edit-exp-category').value;
+    const description = document.getElementById('edit-exp-desc').value.trim();
+    const amount = document.getElementById('edit-exp-amount').value;
+
+    if (!date || !category || !description || !amount) {
+      Components.toast('Semua field wajib diisi', 'warning');
+      return;
+    }
+
+    const expenses = getExpenses();
+    const idx = expenses.findIndex(x => x.id === id);
+    if (idx === -1) return;
+
+    expenses[idx] = { ...expenses[idx], date, category, description, amount: parseInt(amount) };
+    saveExpenses(expenses);
+
+    Components.toast('Biaya berhasil diupdate!', 'success');
+    Components.closeModal();
+    displayExpenses();
+  }
+
+  function confirmDeleteExpense(id) {
+    Components.confirm('Yakin ingin menghapus catatan biaya ini?', () => {
+      const expenses = getExpenses().filter(x => x.id !== id);
+      saveExpenses(expenses);
+      Components.toast('Biaya berhasil dihapus', 'success');
+      displayExpenses();
+    });
+  }
+
   // ======================== PUBLIC API ========================
 
   return {
@@ -1347,6 +1717,13 @@ const AdminPage = (() => {
     filterByStatus,
     filterCustomers,
     filterRevenue,
+    showAddExpense,
+    submitExpense,
+    showEditExpense,
+    updateExpense,
+    confirmDeleteExpense,
+    filterExpenseMonth,
+    filterExpenseCategory,
     saveApiUrl,
     testApi,
     initSheets,
