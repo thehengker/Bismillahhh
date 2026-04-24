@@ -73,6 +73,7 @@ const AdminPage = (() => {
     if (path.includes('/admin/orders')) switchTab('orders');
     else if (path.includes('/admin/customers')) switchTab('customers');
     else if (path.includes('/admin/services')) switchTab('services');
+    else if (path.includes('/admin/revenue')) switchTab('revenue');
     else if (path.includes('/admin/settings')) switchTab('settings');
     else switchTab('dashboard');
   }
@@ -103,6 +104,9 @@ const AdminPage = (() => {
             </a>
             <a class="nav-item ${currentTab === 'services' ? 'active' : ''}" onclick="AdminPage.switchTab('services')" data-tab="services">
               <span class="nav-item-icon">👕</span> Layanan
+            </a>
+            <a class="nav-item ${currentTab === 'revenue' ? 'active' : ''}" onclick="AdminPage.switchTab('revenue')" data-tab="revenue">
+              <span class="nav-item-icon">💰</span> Pendapatan
             </a>
           </div>
           <div class="nav-section">
@@ -154,6 +158,7 @@ const AdminPage = (() => {
       case 'orders': renderOrders(content); break;
       case 'customers': renderCustomers(content); break;
       case 'services': renderServices(content); break;
+      case 'revenue': renderRevenue(content); break;
       case 'settings': renderSettings(content); break;
     }
   }
@@ -904,6 +909,138 @@ const AdminPage = (() => {
         Components.toast('Gagal menghapus layanan', 'error');
       }
     });
+  }
+
+  // ======================== PENDAPATAN (REVENUE) ========================
+
+  async function renderRevenue(container) {
+    container.innerHTML = `
+      <div class="admin-page-header">
+        <div>
+          <h1 class="admin-page-title">Laporan Pendapatan</h1>
+          <p class="admin-page-subtitle">Ringkasan total pendapatan dari transaksi</p>
+        </div>
+      </div>
+      <div class="stats-grid stagger-children" id="revenue-stats" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+        ${Components.skeletonStats(3)}
+      </div>
+      <div class="card" style="margin-top: var(--space-6);">
+        <div class="card-header">
+          <h3 class="card-title">Riwayat Pendapatan</h3>
+        </div>
+        <div id="revenue-table">
+          ${Components.skeletonTable(5)}
+        </div>
+      </div>`;
+
+    await loadRevenue();
+  }
+
+  async function loadRevenue() {
+    if (!API.isConfigured()) return;
+
+    try {
+      let data = [];
+      if (cachedData.transaksi && cachedData.transaksi.length > 0) {
+        data = cachedData.transaksi;
+      } else {
+        const result = await API.Transaksi.getAll();
+        if (result.success) {
+          cachedData.transaksi = result.data;
+          data = result.data;
+        }
+      }
+
+      displayRevenue(data);
+    } catch (error) {
+      Components.toast('Gagal memuat data pendapatan', 'error');
+    }
+  }
+
+  function displayRevenue(data) {
+    let totalRevenue = 0;
+    let thisMonthRevenue = 0;
+    let todayRevenue = 0;
+    
+    const now = new Date();
+    const thisMonth = now.getMonth();
+    const thisYear = now.getFullYear();
+    const today = now.toDateString();
+
+    const revenueList = [];
+
+    data.forEach(t => {
+      const amount = parseFloat(t.total_harga) || 0;
+      if (amount > 0) {
+        totalRevenue += amount;
+        
+        const tDate = new Date(t.tanggal_masuk);
+        if (tDate.getMonth() === thisMonth && tDate.getFullYear() === thisYear) {
+          thisMonthRevenue += amount;
+        }
+        if (tDate.toDateString() === today) {
+          todayRevenue += amount;
+        }
+
+        revenueList.push({
+          id: t.id_transaksi,
+          pelanggan: t.nama_pelanggan,
+          tanggal: t.tanggal_masuk,
+          jumlah: amount,
+          status: t.status
+        });
+      }
+    });
+
+    revenueList.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+
+    const statsEl = document.getElementById('revenue-stats');
+    if (statsEl) {
+      statsEl.innerHTML = `
+        ${Components.statsCard('💰', Components.formatCurrency(totalRevenue), 'Total Keseluruhan', 'stat-total-rev')}
+        ${Components.statsCard('📅', Components.formatCurrency(thisMonthRevenue), 'Bulan Ini', 'stat-month-rev')}
+        ${Components.statsCard('📈', Components.formatCurrency(todayRevenue), 'Hari Ini', 'stat-today-rev')}
+      `;
+    }
+
+    const tableEl = document.getElementById('revenue-table');
+    if (tableEl) {
+      if (revenueList.length === 0) {
+        tableEl.innerHTML = Components.emptyState('📉', 'Belum Ada Pendapatan', 'Belum ada transaksi yang menghasilkan pendapatan');
+      } else {
+        let html = `
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID Transaksi</th>
+                  <th>Tanggal</th>
+                  <th>Pelanggan</th>
+                  <th>Status</th>
+                  <th>Jumlah Pendapatan</th>
+                </tr>
+              </thead>
+              <tbody>`;
+        
+        revenueList.forEach(r => {
+          let statusColor = 'var(--text-secondary)';
+          if (r.status === 'Selesai' || r.status === 'Diambil') statusColor = 'var(--accent-success)';
+          if (r.status === 'Proses') statusColor = 'var(--accent-warning)';
+          
+          html += `
+            <tr>
+              <td><span class="table-id">${r.id}</span></td>
+              <td style="font-size:var(--text-xs)">${Components.formatDate(r.tanggal)}</td>
+              <td style="font-weight:500;">${r.pelanggan}</td>
+              <td><span style="color:${statusColor}; font-weight:bold;">${r.status}</span></td>
+              <td style="font-weight:600;color:var(--text-primary)">${Components.formatCurrency(r.jumlah)}</td>
+            </tr>`;
+        });
+        
+        html += `</tbody></table></div>`;
+        tableEl.innerHTML = html;
+      }
+    }
   }
 
   // ======================== PENGATURAN (SETTINGS) ========================
