@@ -13,7 +13,8 @@ const UserPage = (() => {
       <div class="user-page page active" id="page-user">
         <!-- Header -->
         <header class="user-header">
-          <div class="user-logo">🧺</div>
+          <div class="user-logo" id="front-page-logo" onclick="UserPage.triggerLogoUpload()" title="Klik untuk mengganti logo">🧺</div>
+          <input type="file" id="logo-upload" accept="image/*" style="display:none;" onchange="UserPage.handleLogoUpload(event)">
           <h1 class="user-title"><span class="text-gradient">Laundry Flop Tropic</span></h1>
           <p class="user-subtitle">Cek status cucian Anda dengan mudah</p>
         </header>
@@ -67,6 +68,44 @@ const UserPage = (() => {
         if (e.key === 'Enter') cekStatus();
       });
       input.focus();
+    }
+
+    // Load custom logo if exists
+    const savedLogo = localStorage.getItem('custom_front_logo');
+    if (savedLogo) {
+      applyLogo(savedLogo);
+    }
+  }
+
+  function triggerLogoUpload() {
+    const input = document.getElementById('logo-upload');
+    if (input) input.click();
+  }
+
+  function handleLogoUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const base64Image = e.target.result;
+      localStorage.setItem('custom_front_logo', base64Image);
+      applyLogo(base64Image);
+      Components.toast('Logo berhasil diperbarui', 'success');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function applyLogo(base64Image) {
+    const logoEl = document.getElementById('front-page-logo');
+    if (logoEl) {
+      logoEl.style.backgroundImage = `url(${base64Image})`;
+      logoEl.innerHTML = ''; // Remove the default emoji
+      // Reset background property to allow background-image to show if it was overridden
+      logoEl.style.background = 'none'; 
+      logoEl.style.backgroundImage = `url(${base64Image})`;
+      logoEl.style.backgroundSize = 'cover';
+      logoEl.style.backgroundPosition = 'center';
     }
   }
 
@@ -178,6 +217,8 @@ const UserPage = (() => {
 
   return {
     render,
-    cekStatus
+    cekStatus,
+    triggerLogoUpload,
+    handleLogoUpload
   };
 })();
