@@ -10,9 +10,64 @@ const AdminPage = (() => {
     transaksi: []
   };
 
+  // ======================== AUTHENTICATION ========================
+
+  function checkAuth() {
+    return sessionStorage.getItem('admin_logged_in') === 'true';
+  }
+
+  function login() {
+    const user = document.getElementById('login-username').value;
+    const pass = document.getElementById('login-password').value;
+
+    if (user === 'Geby Dermawan' && pass === 'Goldlabubu24') {
+      sessionStorage.setItem('admin_logged_in', 'true');
+      render();
+    } else {
+      Components.toast('Username atau password salah', 'error');
+    }
+  }
+
+  function logout() {
+    sessionStorage.removeItem('admin_logged_in');
+    render();
+  }
+
+  function renderLogin() {
+    const app = document.getElementById('app');
+    app.innerHTML = `
+      <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: var(--space-4); background-color: var(--bg-primary);">
+        <div class="card" style="width: 100%; max-width: 400px;">
+          <div style="text-align: center; margin-bottom: var(--space-6);">
+            <div style="font-size: 3rem; margin-bottom: var(--space-2);">🧺</div>
+            <h1 style="color: var(--text-primary); font-size: var(--text-2xl); font-weight: 700;">Admin Login</h1>
+            <p style="color: var(--text-secondary); margin-top: var(--space-2);">Laundry Flop</p>
+          </div>
+          <form id="admin-login-form" onsubmit="event.preventDefault(); AdminPage.login();">
+            <div class="form-group">
+              <label class="form-label">Username</label>
+              <input type="text" class="form-input" id="login-username" required placeholder="Masukkan username">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <input type="password" class="form-input" id="login-password" required placeholder="Masukkan password">
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: var(--space-4);">Login</button>
+            <a href="#/user" class="btn btn-secondary" style="width: 100%; margin-top: var(--space-2); display: block; text-align: center; text-decoration: none;">Kembali ke Halaman User</a>
+          </form>
+        </div>
+      </div>
+    `;
+  }
+
   // ======================== MAIN RENDER ========================
 
   function render() {
+    if (!checkAuth()) {
+      renderLogin();
+      return;
+    }
+
     const app = document.getElementById('app');
     app.innerHTML = `
       ${renderSidebar()}
@@ -69,6 +124,9 @@ const AdminPage = (() => {
         <div class="sidebar-footer">
           <a class="nav-item" href="#/user">
             <span class="nav-item-icon">🔙</span> Halaman User
+          </a>
+          <a class="nav-item" style="color: var(--accent-warning); margin-top: var(--space-2); cursor: pointer;" onclick="AdminPage.logout()">
+            <span class="nav-item-icon">🚪</span> Logout
           </a>
         </div>
       </aside>`;
@@ -1017,6 +1075,8 @@ const AdminPage = (() => {
 
   return {
     render,
+    login,
+    logout,
     switchTab,
     toggleSidebar,
     handleStatusChange,
